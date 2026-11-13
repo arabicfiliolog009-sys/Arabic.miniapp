@@ -17,7 +17,6 @@ const levelBadge = document.getElementById('level-badge');
 const apiModal = document.getElementById('api-modal');
 const apiKeyInput = document.getElementById('api-key-input');
 
-// Boshlang'ich sozlamalar
 updateLevelUI(currentLevel);
 if (!apiKey) apiModal.classList.remove('hidden');
 
@@ -49,7 +48,6 @@ function updateLevelUI(lvl) {
   });
 }
 
-// Ovoz yozish (Mikrofon tugmasi)
 micBtn.onclick = async () => {
   if (!apiKey) {
     apiModal.classList.remove('hidden');
@@ -61,14 +59,16 @@ micBtn.onclick = async () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorder = new MediaRecorder(stream);
       audioChunks = [];
-      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
       mediaRecorder.onstop = processAudio;
       mediaRecorder.start();
       isRecording = true;
       micBtn.textContent = '⏹️ To‘xtatish';
       micBtn.classList.add('recording');
     } catch (err) {
-      alert('Mikrofonga ruxsat berilmadi! Sozlamalardan ruxsat bering.');
+      alert('Mikrofon xatosi: ' + err.message);
     }
   } else {
     mediaRecorder.stop();
@@ -79,7 +79,6 @@ micBtn.onclick = async () => {
   }
 };
 
-// Yordam (تلميح) tugmasi - A1/A2 lar uchun
 hintBtn.onclick = async () => {
   if (!apiKey) return apiModal.classList.remove('hidden');
   hintBtn.disabled = true;
@@ -98,40 +97,53 @@ hintBtn.onclick = async () => {
       })
     });
     const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
     addMessage('ai', data.choices[0].message.content, '💡 Javob berish uchun tayyor variantlar');
   } catch (e) {
-    alert('Xatolik yuz berdi');
+    alert('Yordam xatosi: ' + e.message);
   }
   hintBtn.disabled = false;
   hintBtn.textContent = '💡 Yordam (تلميح)';
 };
 
 async function processAudio() {
-  const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+  const mimeType = mediaRecorder.mimeType || 'audio/webm';
+  const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+  const audioBlob = new Blob(audioChunks, { type: mimeType });
+
+  if (audioBlob.size < 500) {
+    alert('Ovoz juda qisqa yozildi, tugmani bosib biroz gapiring.');
+    resetMic();
+    return;
+  }
+
   const formData = new FormData();
-  formData.append('file', audioBlob, 'speech.webm');
+  formData.append('file', audioBlob, `speech.${ext}`);
   formData.append('model', 'whisper-large-v3-turbo');
   formData.append('language', 'ar');
 
   try {
-    // 1. Ovozni matnga aylantirish (STT)
     const sttRes = await fetch('https://groq.com', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}` },
       body: formData
     });
     const sttData = await sttRes.json();
-    const userText = sttData.text;
 
-    if (!userText || userText.trim().length < 2) {
+    if (sttData.error) {
+      throw new Error('STT Xatosi: ' + sttData.error.message);
+    }
+
+    const userText = sttData.text;
+    if (!userText || userText.trim().length < 1) {
+      alert('Ovoz eshitilmadi, balandroq gapirib ko‘ring.');
       resetMic();
       return;
     }
 
-    // 2. AI dan javob va C2+ tahlil olish (LLM)
     await getAIResponse(userText);
   } catch (err) {
-    alert('Ovozni qayta ishlashda xatolik: API kalitni tekshiring.');
+    alert(err.message);
     resetMic();
   }
 }
@@ -146,14 +158,14 @@ QOIDALAR:
 3. C1/C2+ darajada: Eng yuksak adabiy arab tilida (الفصحى المعاصرة البليغة), chuqur falsafiy va mantiqiy dalillar bilan bahslash, harakatsiz yoz.
 4. Har doim foydalanuvchining fikriga qarshi savol yoki qiziqarli munosabat bildir (haqiqiy jonli suhbatdoshdek emotsiya bilan).
 
-JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR (boshqa hech narsa yozma):
+JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
 {
   "user_corrected": "Foydalanuvchi gapining to'g'rilangan shakli",
   "next_level_upgrade": "Shu gapning bir daraja yuqori (chiroyliroq) shakli",
   "c2_masterpiece": "Shu gapning C2+ darajadagi eng mukammal, akademik adabiy ko'rinishi",
   "ai_reply": "Sening arabcha hissiyotli va bahslashuvchi javobing",
   "uz_translation": "Sening javobingning qisqa o'zbekcha mazmuni",
-  "ready_for_level_up": true yoki false (agar foydalanuvchi bu darajada juda yaxshi gapirgan bo'lsa true)
+  "ready_for_level_up": true
 }`;
 
   chatHistory.push({ role: 'user', content: userText });
@@ -172,18 +184,17 @@ JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR (boshqa hech narsa yozma):
   });
 
   const llmData = await llmRes.json();
-  const result = JSON.parse(llmData.choices[0].message.content);
+  if (llmData.error) {
+    throw new Error('AI Xatosi: ' + llmData.error.message);
+  }
 
+  const result = JSON.parse(llmData.choices[0].message.content);
   chatHistory.push({ role: 'assistant', content: result.ai_reply });
 
-  // Foydalanuvchi gapi va C2+ Ko'prik tahlilini chiqarish
   addUserMessageWithUpgrade(userText, result);
-
-  // AI javobini chiqarish va ovozli o'qish
   addMessage('ai', result.ai_reply, result.uz_translation);
   speakArabic(result.ai_reply);
 
-  // Darajani avtomatik oshirish tekshiruvi
   if (result.ready_for_level_up) {
     goodResponsesCount++;
     if (goodResponsesCount >= 4) {
