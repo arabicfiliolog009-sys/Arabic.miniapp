@@ -30,6 +30,7 @@ document.getElementById('save-api-btn').onclick = () => {
   if (apiKey) {
     localStorage.setItem('groq_api_key', apiKey);
     apiModal.classList.add('hidden');
+    alert('Yangi API kalit saqlandi!');
   }
 };
 
@@ -100,7 +101,7 @@ hintBtn.onclick = async () => {
     if (data.error) throw new Error(data.error.message);
     addMessage('ai', data.choices[0].message.content, '💡 Javob berish uchun tayyor variantlar');
   } catch (e) {
-    alert('Yordam xatosi: ' + e.message);
+    alert('Xato: ' + e.message);
   }
   hintBtn.disabled = false;
   hintBtn.textContent = '💡 Yordam (تلميح)';
@@ -112,7 +113,7 @@ async function processAudio() {
   const audioBlob = new Blob(audioChunks, { type: mimeType });
 
   if (audioBlob.size < 500) {
-    alert('Ovoz juda qisqa yozildi, tugmani bosib biroz gapiring.');
+    alert('Ovoz juda qisqa yozildi, tugmani bosib 2-3 soniya gapiring.');
     resetMic();
     return;
   }
@@ -143,7 +144,7 @@ async function processAudio() {
 
     await getAIResponse(userText);
   } catch (err) {
-    alert(err.message);
+    alert('Ulanish xatosi: ' + err.message);
     resetMic();
   }
 }
@@ -156,7 +157,7 @@ QOIDALAR:
 1. A1/A2 darajada: Juda sodda, qisqa (1-2 gap), barcha harakatlari (tashkil) qo'yilgan arab tilida gapir, ruhlantir.
 2. B1/B2 darajada: Tabiiy, hissiyotli gapir, savollar bilan bahsga tort.
 3. C1/C2+ darajada: Eng yuksak adabiy arab tilida (الفصحى المعاصرة البليغة), chuqur falsafiy va mantiqiy dalillar bilan bahslash, harakatsiz yoz.
-4. Har doim foydalanuvchining fikriga qarshi savol yoki qiziqarli munosabat bildir (haqiqiy jonli suhbatdoshdek emotsiya bilan).
+4. Har doim foydalanuvchining fikriga qarshi savol yoki qiziqarli munosabat bildir.
 
 JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
 {
