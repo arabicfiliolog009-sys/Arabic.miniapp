@@ -2,7 +2,7 @@ const tg = window.Telegram?.WebApp;
 if (tg) tg.expand();
 
 let currentLevel = localStorage.getItem('user_level') || 'A1';
-let apiKey = localStorage.getItem('groq_api_key') || '';
+let apiKey = localStorage.getItem('gemini_api_key') || '';
 let chatHistory = [];
 let mediaRecorder;
 let audioChunks = [];
@@ -17,6 +17,10 @@ const levelBadge = document.getElementById('level-badge');
 const apiModal = document.getElementById('api-modal');
 const apiKeyInput = document.getElementById('api-key-input');
 
+// Modal matnini Gemini ga moslash
+document.querySelector('#api-modal h3').textContent = 'Google Gemini API Kalitini Kiriting';
+apiKeyInput.placeholder = 'AIzaSy...';
+
 updateLevelUI(currentLevel);
 if (!apiKey) apiModal.classList.remove('hidden');
 
@@ -28,9 +32,9 @@ document.getElementById('settings-btn').onclick = () => {
 document.getElementById('save-api-btn').onclick = () => {
   apiKey = apiKeyInput.value.trim();
   if (apiKey) {
-    localStorage.setItem('groq_api_key', apiKey);
+    localStorage.setItem('gemini_api_key', apiKey);
     apiModal.classList.add('hidden');
-    alert('Yangi API kalit saqlandi!');
+    alert('Google Gemini API kalit saqlandi!');
   }
 };
 
@@ -85,21 +89,21 @@ hintBtn.onclick = async () => {
   hintBtn.disabled = true;
   hintBtn.textContent = '⏳...';
 
-  const lastAiMsg = chatHistory.filter(m => m.role === 'assistant').pop()?.content || 'كَيْفَ حَالُكَ الْيَوْمَ؟';
+  const lastAiMsg = chatHistory.filter(m => m.role === 'model').pop()?.text || 'كَيْفَ حَالُكَ الْيَوْمَ؟';
   const prompt = `Foydalanuvchi darajasi: ${currentLevel}. Oxirgi savol: "${lastAiMsg}". Foydalanuvchiga javob berishi uchun 2 ta qisqa arabcha variant (harakatlari bilan) va o'zbekcha tarjimasini yoz.`;
 
   try {
-    const res = await fetch('https://groq.com', {
+    const res = await fetch(`https://googleapis.com{apiKey}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: prompt }]
+        contents: [{ parts: [{ text: prompt }] }]
       })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    addMessage('ai', data.choices[0].message.content, '💡 Javob berish uchun tayyor variantlar');
+    const reply = data.candidates[0].content.parts[0].text;
+    addMessage('ai', reply, '💡 Javob berish uchun tayyor variantlar');
   } catch (e) {
     alert('Xato: ' + e.message);
   }
@@ -109,7 +113,6 @@ hintBtn.onclick = async () => {
 
 async function processAudio() {
   const mimeType = mediaRecorder.mimeType || 'audio/webm';
-  const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
   const audioBlob = new Blob(audioChunks, { type: mimeType });
 
   if (audioBlob.size < 500) {
@@ -118,42 +121,20 @@ async function processAudio() {
     return;
   }
 
-  const formData = new FormData();
-  formData.append('file', audioBlob, `speech.${ext}`);
-  formData.append('model', 'whisper-large-v3-turbo');
-  formData.append('language', 'ar');
-
-  try {
-    const sttRes = await fetch('https://groq.com', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      body: formData
-    });
-    const sttData = await sttRes.json();
-
-    if (sttData.error) {
-      throw new Error('STT Xatosi: ' + sttData.error.message);
-    }
-
-    const userText = sttData.text;
-    if (!userText || userText.trim().length < 1) {
-      alert('Ovoz eshitilmadi, balandroq gapirib ko‘ring.');
-      resetMic();
-      return;
-    }
-
-    await getAIResponse(userText);
-  } catch (err) {
-    alert('Ulanish xatosi: ' + err.message);
-    resetMic();
-  }
+  const reader = new FileReader();
+  reader.readAsDataURL(audioBlob);
+  reader.onloadend = async () => {
+    const base64Audio = reader.result.split(',')[1];
+    await sendAudioToGemini(base64Audio, mimeType.split(';')[0]);
+  };
 }
 
-async function getAIResponse(userText) {
+async function sendAudioToGemini(base64Audio, cleanMimeType) {
   const systemPrompt = `Sen arab tili bo'yicha A1 dan C2+ gacha olib chiquvchi professional AI suhbatdosh va IELTS uslubidagi imtihon oluvchisan.
 Foydalanuvchining hozirgi darajasi: ${currentLevel}.
 
-QOIDALAR:
+VAZIFANG:
+Foydalanuvchining yuborgan ovozini eshit, u nima deganini arabcha matnga o'gir va darajasiga mos javob ber.
 1. A1/A2 darajada: Juda sodda, qisqa (1-2 gap), barcha harakatlari (tashkil) qo'yilgan arab tilida gapir, ruhlantir.
 2. B1/B2 darajada: Tabiiy, hissiyotli gapir, savollar bilan bahsga tort.
 3. C1/C2+ darajada: Eng yuksak adabiy arab tilida (الفصحى المعاصرة البليغة), chuqur falsafiy va mantiqiy dalillar bilan bahslash, harakatsiz yoz.
@@ -161,7 +142,7 @@ QOIDALAR:
 
 JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
 {
-  "user_corrected": "Foydalanuvchi gapining to'g'rilangan shakli",
+  "user_transcript": "Foydalanuvchi ovozda aytgan arabcha gap",
   "next_level_upgrade": "Shu gapning bir daraja yuqori (chiroyliroq) shakli",
   "c2_masterpiece": "Shu gapning C2+ darajadagi eng mukammal, akademik adabiy ko'rinishi",
   "ai_reply": "Sening arabcha hissiyotli va bahslashuvchi javobing",
@@ -169,41 +150,49 @@ JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
   "ready_for_level_up": true
 }`;
 
-  chatHistory.push({ role: 'user', content: userText });
+  try {
+    const response = await fetch(`https://googleapis.com{apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [
+          ...chatHistory.slice(-4).map(m => ({ role: m.role, parts: [{ text: m.text }] })),
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType: cleanMimeType, data: base64Audio } },
+              { text: 'Ovozli xabarimni eshitib, JSON formatida javob ber.' }
+            ]
+          }
+        ],
+        generationConfig: { responseMimeType: 'application/json' }
+      })
+    });
 
-  const llmRes = await fetch('https://groq.com', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...chatHistory.slice(-6)
-      ],
-      response_format: { type: 'json_object' }
-    })
-  });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message);
 
-  const llmData = await llmRes.json();
-  if (llmData.error) {
-    throw new Error('AI Xatosi: ' + llmData.error.message);
-  }
+    const rawJson = data.candidates[0].content.parts[0].text;
+    const result = JSON.parse(rawJson);
 
-  const result = JSON.parse(llmData.choices[0].message.content);
-  chatHistory.push({ role: 'assistant', content: result.ai_reply });
+    chatHistory.push({ role: 'user', text: result.user_transcript });
+    chatHistory.push({ role: 'model', text: result.ai_reply });
 
-  addUserMessageWithUpgrade(userText, result);
-  addMessage('ai', result.ai_reply, result.uz_translation);
-  speakArabic(result.ai_reply);
+    addUserMessageWithUpgrade(result.user_transcript, result);
+    addMessage('ai', result.ai_reply, result.uz_translation);
+    speakArabic(result.ai_reply);
 
-  if (result.ready_for_level_up) {
-    goodResponsesCount++;
-    if (goodResponsesCount >= 4) {
-      promoteUserLevel();
-      goodResponsesCount = 0;
+    if (result.ready_for_level_up) {
+      goodResponsesCount++;
+      if (goodResponsesCount >= 4) {
+        promoteUserLevel();
+        goodResponsesCount = 0;
+      }
     }
+  } catch (err) {
+    alert('Xato: ' + err.message);
   }
-
   resetMic();
 }
 
