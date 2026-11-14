@@ -1,13 +1,9 @@
 const tg = window.Telegram?.WebApp;
 if (tg) tg.expand();
 
-// SHU YERGA O'ZINGIZNING CLOUDFLARE WORKER HAVOLANGIZNI QO'YING (oxirida / bo'lmasin!):
-const WORKER_URL = 'https://irfon.arabic-filiolog009.workers.dev';
-const CLOUDFLARE_URL = WORKER_URL;
-
-
 let currentLevel = localStorage.getItem('user_level') || 'A1';
 let apiKey = localStorage.getItem('gemini_api_key') || '';
+let workerUrl = localStorage.getItem('worker_url') || '';
 let chatHistory = [];
 let mediaRecorder;
 let audioChunks = [];
@@ -22,23 +18,36 @@ const levelBadge = document.getElementById('level-badge');
 const apiModal = document.getElementById('api-modal');
 const apiKeyInput = document.getElementById('api-key-input');
 
-document.querySelector('#api-modal h3').textContent = 'Google Gemini API Kalitini Kiriting';
-apiKeyInput.placeholder = 'AIzaSy...';
+// Sozlamalar oynasiga Worker havolasini kiritish katagini qo'shamiz
+const modalContent = document.querySelector('.modal-content');
+modalContent.querySelector('h3').textContent = 'Sozlamalar (Gemini API va Worker)';
+apiKeyInput.placeholder = 'Gemini API kalit (AIzaSy...)';
+
+const workerInput = document.createElement('input');
+workerInput.type = 'text';
+workerInput.id = 'worker-url-input';
+workerInput.placeholder = 'Cloudflare Worker (https://...workers.dev)';
+modalContent.insertBefore(workerInput, document.getElementById('save-api-btn'));
 
 updateLevelUI(currentLevel);
-if (!apiKey) apiModal.classList.remove('hidden');
+if (!apiKey || !workerUrl) apiModal.classList.remove('hidden');
 
 document.getElementById('settings-btn').onclick = () => {
   apiKeyInput.value = apiKey;
+  workerInput.value = workerUrl;
   apiModal.classList.remove('hidden');
 };
 
 document.getElementById('save-api-btn').onclick = () => {
   apiKey = apiKeyInput.value.trim();
-  if (apiKey) {
+  workerUrl = workerInput.value.trim().replace(/\/$/, '');
+  if (apiKey && workerUrl) {
     localStorage.setItem('gemini_api_key', apiKey);
+    localStorage.setItem('worker_url', workerUrl);
     apiModal.classList.add('hidden');
-    alert('Google Gemini API kalit saqlandi!');
+    alert('Barcha sozlamalar saqlandi!');
+  } else {
+    alert('Iltimos, ikkala katakni ham to‘ldiring!');
   }
 };
 
@@ -58,7 +67,7 @@ function updateLevelUI(lvl) {
 }
 
 micBtn.onclick = async () => {
-  if (!apiKey) {
+  if (!apiKey || !workerUrl) {
     apiModal.classList.remove('hidden');
     return;
   }
@@ -89,7 +98,7 @@ micBtn.onclick = async () => {
 };
 
 hintBtn.onclick = async () => {
-  if (!apiKey) return apiModal.classList.remove('hidden');
+  if (!apiKey || !workerUrl) return apiModal.classList.remove('hidden');
   hintBtn.disabled = true;
   hintBtn.textContent = '⏳...';
 
@@ -97,7 +106,7 @@ hintBtn.onclick = async () => {
   const prompt = `Foydalanuvchi darajasi: ${currentLevel}. Oxirgi savol: "${lastAiMsg}". Foydalanuvchiga javob berishi uchun 2 ta qisqa arabcha variant (harakatlari bilan) va o'zbekcha tarjimasini yoz.`;
 
   try {
-    const res = await fetch(`${CLOUDFLARE_URL}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    const res = await fetch(`${workerUrl}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -106,7 +115,7 @@ hintBtn.onclick = async () => {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const reply = data.candidates.content.parts.text;
+    const reply = data.candidates[0].content.parts[0].text;
     addMessage('ai', reply, '💡 Javob berish uchun tayyor variantlar');
   } catch (e) {
     alert('Xato: ' + e.message);
@@ -128,8 +137,8 @@ async function processAudio() {
   const reader = new FileReader();
   reader.readAsDataURL(audioBlob);
   reader.onloadend = async () => {
-    const base64Audio = reader.result.split(',');
-    await sendAudioToGemini(base64Audio, mimeType.split(';'));
+    const base64Audio = reader.result.split(',')[1];
+    await sendAudioToGemini(base64Audio, mimeType.split(';')[0]);
   };
 }
 
@@ -155,7 +164,7 @@ JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
 }`;
 
   try {
-    const response = await fetch(`${CLOUDFLARE_URL}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`${workerUrl}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -177,7 +186,7 @@ JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
 
-    const rawJson = data.candidates.content.parts.text;
+    const rawJson = data.candidates[0].content.parts[0].text;
     const result = JSON.parse(rawJson);
 
     chatHistory.push({ role: 'user', text: result.user_transcript });
