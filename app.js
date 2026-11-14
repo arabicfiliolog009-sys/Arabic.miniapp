@@ -2,7 +2,7 @@ const tg = window.Telegram?.WebApp;
 if (tg) tg.expand();
 
 // SHU YERGA O'ZINGIZNING CLOUDFLARE WORKER HAVOLANGIZNI QO'YING (oxirida / bo'lmasin!):
-const CLOUDFLARE_URL = https://irfon.arabic-filiolog009.workers.dev
+const CLOUDFLARE_URL = 'https://irfon.arabic-filiolog009.workers.dev';
 
 let currentLevel = localStorage.getItem('user_level') || 'A1';
 let apiKey = localStorage.getItem('gemini_api_key') || '';
