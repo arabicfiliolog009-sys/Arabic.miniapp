@@ -1,6 +1,9 @@
 const tg = window.Telegram?.WebApp;
 if (tg) tg.expand();
 
+// SHU YERGA O'ZINGIZNING CLOUDFLARE WORKER HAVOLANGIZNI QO'YING (oxirida / bo'lmasin!):
+const CLOUDFLARE_URL = https://irfon.arabic-filiolog009.workers.dev
+
 let currentLevel = localStorage.getItem('user_level') || 'A1';
 let apiKey = localStorage.getItem('gemini_api_key') || '';
 let chatHistory = [];
@@ -17,7 +20,6 @@ const levelBadge = document.getElementById('level-badge');
 const apiModal = document.getElementById('api-modal');
 const apiKeyInput = document.getElementById('api-key-input');
 
-// Modal matnini Gemini ga moslash
 document.querySelector('#api-modal h3').textContent = 'Google Gemini API Kalitini Kiriting';
 apiKeyInput.placeholder = 'AIzaSy...';
 
@@ -93,7 +95,7 @@ hintBtn.onclick = async () => {
   const prompt = `Foydalanuvchi darajasi: ${currentLevel}. Oxirgi savol: "${lastAiMsg}". Foydalanuvchiga javob berishi uchun 2 ta qisqa arabcha variant (harakatlari bilan) va o'zbekcha tarjimasini yoz.`;
 
   try {
-    const res = await fetch(`https://googleapis.com{apiKey}`, {
+    const res = await fetch(`${CLOUDFLARE_URL}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -102,7 +104,7 @@ hintBtn.onclick = async () => {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const reply = data.candidates[0].content.parts[0].text;
+    const reply = data.candidates.content.parts.text;
     addMessage('ai', reply, '💡 Javob berish uchun tayyor variantlar');
   } catch (e) {
     alert('Xato: ' + e.message);
@@ -124,8 +126,8 @@ async function processAudio() {
   const reader = new FileReader();
   reader.readAsDataURL(audioBlob);
   reader.onloadend = async () => {
-    const base64Audio = reader.result.split(',')[1];
-    await sendAudioToGemini(base64Audio, mimeType.split(';')[0]);
+    const base64Audio = reader.result.split(',');
+    await sendAudioToGemini(base64Audio, mimeType.split(';'));
   };
 }
 
@@ -151,7 +153,7 @@ JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
 }`;
 
   try {
-    const response = await fetch(`https://googleapis.com{apiKey}`, {
+    const response = await fetch(`${CLOUDFLARE_URL}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -173,7 +175,7 @@ JAVOBNI FAQAT QUYIDAGI JSON FORMATIDA QAYTAR:
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
 
-    const rawJson = data.candidates[0].content.parts[0].text;
+    const rawJson = data.candidates.content.parts.text;
     const result = JSON.parse(rawJson);
 
     chatHistory.push({ role: 'user', text: result.user_transcript });
