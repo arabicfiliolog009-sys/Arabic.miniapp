@@ -3,6 +3,8 @@ if (tg) tg.expand();
 
 // SHU YERGA O'ZINGIZNING CLOUDFLARE WORKER HAVOLANGIZNI QO'YING (oxirida / bo'lmasin!):
 const WORKER_URL = 'https://irfon.arabic-filiolog009.workers.dev';
+const CLOUDFLARE_URL = WORKER_URL;
+
 
 let currentLevel = localStorage.getItem('user_level') || 'A1';
 let apiKey = localStorage.getItem('gemini_api_key') || '';
